@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>AKISAM LIVE</title>
+  <title>ChatWave</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
@@ -21,7 +21,7 @@
       top: 0; left: 0;
       width: 100%; height: 100%;
       z-index: 0;
-      opacity: 0.18;
+      opacity: 1;
       pointer-events: none;
     }
 
@@ -108,7 +108,7 @@
 
 <div class="username-screen" id="usernameScreen">
   <div class="username-box">
-    <h2>tutwaniliza ku chatwave 👋</h2>
+    <h2>Welcome to ChatWave 👋</h2>
     <p style="color:var(--muted);font-size:13px;">Enter a username to start chatting</p>
     <input type="text" id="usernameInput" placeholder="Your name..." />
     <button onclick="setUsername()">Join Chat</button>
@@ -125,8 +125,8 @@
 <div class="chat-area">
   <div class="chat-header">
     <div class="chat-header-info">
-      <h2>Akisam created this general room t</h2>
-      <span>●Akisam Live</span>
+      <h2>General Room</h2>
+      <span>● Live</span>
     </div>
   </div>
   <div class="messages" id="messages"></div>
@@ -141,8 +141,10 @@
     <div class="input-wrap">
       <textarea id="msgInput" rows="1" placeholder="Type a message…"></textarea>
       <button class="emoji-toggle" id="emojiBtn" title="Emoji">😊</button>
+      <button class="emoji-toggle" id="mediaBtn" title="Photo/Video">📎</button>
+      <input type="file" id="mediaInput" accept="image/*,video/*" style="display:none"/>
     </div>
-    <button class="send-btn" onclick="sendMessage()">send➤</button>
+    <button class="send-btn" onclick="sendMessage()">➤</button>
   </div>
 </div>
 
@@ -152,7 +154,7 @@
   const canvas = document.getElementById('matrix-canvas');
   const ctx = canvas.getContext('2d');
   const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&';
-  const fontSize = 13;
+  const fontSize = 16;
   let cols, drops;
 
   function resize() {
@@ -163,14 +165,14 @@
   }
 
   function draw() {
-    ctx.fillStyle = 'rgba(13,13,15,0.05)';
+    ctx.fillStyle = 'rgba(13,13,15,0.01)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.font = fontSize + 'px monospace';
     for (let i = 0; i < drops.length; i++) {
       const ch = chars[Math.floor(Math.random() * chars.length)];
-      ctx.fillStyle = '#c8ffc8';
+      ctx.fillStyle = '#ffffff';
       ctx.fillText(ch, i * fontSize, drops[i] * fontSize);
-      ctx.fillStyle = '#00c832';
+      ctx.fillStyle = '#00ff41';
       ctx.fillText(chars[Math.floor(Math.random() * chars.length)], i * fontSize, (drops[i] - 1) * fontSize);
       if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
       drops[i]++;
@@ -282,6 +284,43 @@ msgInput.addEventListener('input', () => {
 });
 
 // ── SEND ───────────────────────────────────────────────────
+// ── MEDIA UPLOAD ───────────────────────────────────────────
+document.getElementById('mediaBtn').addEventListener('click', () => {
+  document.getElementById('mediaInput').click();
+});
+
+document.getElementById('mediaInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file || !username) return;
+
+  const ext = file.name.split('.').pop();
+  const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+  const isVideo = file.type.startsWith('video/');
+
+  // Show uploading indicator
+  const tempMsg = {
+    id: 'temp_' + Date.now(),
+    username,
+    text: isVideo ? '📹 Uploading video...' : '🖼 Uploading photo...',
+    created_at: new Date().toISOString()
+  };
+  renderedIds.add(tempMsg.id);
+  renderMessage(tempMsg);
+
+  const { error: upErr } = await client.storage.from('media').upload(fileName, file, { contentType: file.type });
+  if (upErr) { console.error('Upload error:', upErr.message); return; }
+
+  const { data: urlData } = client.storage.from('media').getPublicUrl(fileName);
+  const mediaUrl = urlData.publicUrl;
+  const mediaType = isVideo ? 'video' : 'image';
+
+  const { data, error } = await client.from('messages').insert([{ username, text: '', media_url: mediaUrl, media_type: mediaType }]).select().single();
+  if (error) { console.error('Insert error:', error.message); }
+  else if (data) { renderedIds.add(data.id); }
+
+  e.target.value = '';
+});
+
 async function sendMessage() {
   const text = msgInput.value.trim();
   if (!text || !username) return;
@@ -302,7 +341,6 @@ async function sendMessage() {
   if (error) {
     console.error('Insert error:', error.message);
   } else if (data) {
-    // Mark real ID as rendered so realtime doesn't duplicate it
     renderedIds.add(data.id);
   }
 }
@@ -314,11 +352,21 @@ function renderMessage(msg) {
   const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const row = document.createElement('div');
   row.className = `msg-row ${isSent ? 'sent' : 'recv'}`;
+
+  let bubbleContent = '';
+  if (msg.media_url && msg.media_type === 'image') {
+    bubbleContent = `<img src="${msg.media_url}" style="max-width:220px;max-height:220px;border-radius:10px;display:block;cursor:pointer" onclick="window.open('${msg.media_url}','_blank')" />`;
+  } else if (msg.media_url && msg.media_type === 'video') {
+    bubbleContent = `<video src="${msg.media_url}" controls style="max-width:220px;max-height:220px;border-radius:10px;display:block"></video>`;
+  } else {
+    bubbleContent = escapeHtml(msg.text);
+  }
+
   row.innerHTML = `
     ${!isSent ? `<div class="msg-avatar">${msg.username[0].toUpperCase()}</div>` : ''}
     <div>
       ${!isSent ? `<div style="font-size:11px;color:var(--muted);margin-bottom:3px;">${msg.username}</div>` : ''}
-      <div class="bubble">${escapeHtml(msg.text)}</div>
+      <div class="bubble">${bubbleContent}</div>
       <div class="bubble-time">${time}</div>
     </div>`;
   messages.appendChild(row);
