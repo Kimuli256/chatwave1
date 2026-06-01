@@ -310,7 +310,7 @@ async function sendMessage() {
 // ── RENDER MESSAGE ─────────────────────────────────────────
 function renderMessage(msg) {
   const messages = document.getElementById('messages');
-  const isSent = msg.username === username;
+  const isSent = msg.username.trim().toLowerCase() === username.trim().toLowerCase();
   const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const row = document.createElement('div');
   row.className = `msg-row ${isSent ? 'sent' : 'recv'}`;
